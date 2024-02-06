@@ -2,7 +2,6 @@
 // Licensed under the MIT license.
 
 #include "env.h"
-#include "gpu/gpu_kernel.h"
 #include "include/ark.h"
 #include "ipc/ipc_coll.h"
 #include "ops_test_common.h"
@@ -45,7 +44,7 @@ void test_reduce_scatter_internal(size_t nelem, int iter) {
                 data_buf[i] = ark::half_t(gpu_id + 1);
             }
             ark::Tensor *output =
-                model.local_reduce_scatter_msll(data, gpu_id, num_gpus);
+                model.local_reduce_scatter(data, gpu_id, num_gpus);
 
             auto result =
                 ark::op_test("reduce_scatter", model, {data}, {output},
@@ -67,8 +66,6 @@ ark::unittest::State test_reduce_scatter() {
 
 int main() {
     ark::init();
-    if (ark::get_env().use_msll) {
-        UNITTEST(test_reduce_scatter);
-    }
+    UNITTEST(test_reduce_scatter);
     return ark::unittest::SUCCESS;
 }

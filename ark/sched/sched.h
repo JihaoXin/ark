@@ -4,12 +4,9 @@
 #ifndef ARK_SCHED_H_
 #define ARK_SCHED_H_
 
-#include "gpu/gpu_kernel.h"
-#include "gpu/gpu_mgr.h"
 #include "include/ark.h"
 #include "sched/sched_codegen.h"
 #include "sched/sched_opgraph.h"
-#include "sched/sched_profiler.h"
 #include "sched/sched_stream.h"
 
 namespace ark {
@@ -42,7 +39,7 @@ class BaseScheduler {
                   int num_warps_per_sm_ = 16);
 
     // create context on gpu for the model
-    GpuMgrCtx *create_context(const std::string &name);
+    std::shared_ptr<GpuContext> create_context();
 
     const OpConfig *sched_op_config(const Op *op);
 
@@ -53,9 +50,10 @@ class BaseScheduler {
 
    protected:
     Model *model;
-    GpuMgr *gpu_mgr;
+    std::shared_ptr<GpuManager> gpu_mgr;
     int rank;
     int world_size;
+    std::shared_ptr<GpuContext> ctx;
     int num_warps_per_sm;
     std::unique_ptr<CodeGenerator> codegen;
 
@@ -63,10 +61,6 @@ class BaseScheduler {
 
     // the information of the GPU buffers
     std::vector<BufInfo> buf_infos;
-
-    std::vector<const Op *> send_recv_ops;
-
-    GpuMgrCtx *ctx;
 };
 
 class DefaultScheduler : public BaseScheduler {
@@ -79,14 +73,11 @@ class DefaultScheduler : public BaseScheduler {
 
    protected:
     void configure_gpu_buf(const std::list<Tensor *> &model_tensors);
-    void schedule_depth(std::vector<SchedOpSeq *> &depth,
-                        std::vector<Sched> &scheds);
-    void schedule_depth_comm(std::vector<SchedOpSeq *> &depth,
-                             std::vector<Sched> &scheds);
     void heuristic_optimize_model(Model &model, Model::Impl *model_impl,
-                                  const GpuInfo &gpu_info, int num_sm);
+                                  const GpuManager::Info &gpu_info, int num_sm);
     void heuristic_optimize_matmul(Model &model, Model::Impl *model_impl,
-                                   Op &matmul_op, const GpuInfo &gpu_info,
+                                   Op &matmul_op,
+                                   const GpuManager::Info &gpu_info,
                                    int num_sm);
 
    private:

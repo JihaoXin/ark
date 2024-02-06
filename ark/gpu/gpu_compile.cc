@@ -16,6 +16,7 @@
 #include <functional>
 #include <iomanip>
 #include <mutex>
+#include <thread>
 
 #include "cpu_timer.h"
 #include "env.h"
@@ -25,8 +26,6 @@
 #include "random.h"
 
 #define ARK_DEBUG_KERNEL 0
-
-using namespace std;
 
 namespace ark {
 
@@ -101,10 +100,6 @@ static const std::string gpu_compile_command(
     args.emplace_back("--define-macro=ARK_TARGET_CUDA_ARCH=" + cc);
     args.emplace_back("-I" + ark_root + "/include");
     args.emplace_back("-I" + ark_root + "/include/kernels");
-    if (get_env().use_msll) {
-        args.emplace_back("--define-macro=ARK_USE_MSLL=1");
-        args.emplace_back("-I" + get_env().msll_include_dir);
-    }
     args.emplace_back("-gencode arch=compute_" + cc + ",code=sm_" + cc);
     args.emplace_back("-o " + output_file_path);
     args.emplace_back(code_file_path);
@@ -120,7 +115,7 @@ static const std::string gpu_compile_command(
     std::vector<std::string> args;
 
     // TODO: use the compiler found by cmake.
-    args.emplace_back("/usr/bin/hipcc");
+    args.emplace_back("LANG=C /usr/bin/hipcc");
     args.emplace_back("--genco");
 #if (ARK_DEBUG_KERNEL)
     args.emplace_back("-O0");
@@ -129,10 +124,6 @@ static const std::string gpu_compile_command(
     args.emplace_back("--define-macro=ARK_TARGET_ROCM_ARCH=" + cc);
     args.emplace_back("-I" + ark_root + "/include");
     args.emplace_back("-I" + ark_root + "/include/kernels");
-    if (get_env().use_msll) {
-        args.emplace_back("--define-macro=ARK_USE_MSLL=1");
-        args.emplace_back("-I" + get_env().msll_include_dir);
-    }
     args.emplace_back("--offload-arch=gfx" + cc);
     args.emplace_back("-o " + output_file_path);
     args.emplace_back(code_file_path);
@@ -158,7 +149,7 @@ const std::string gpu_compile(const std::vector<std::string> &codes,
     items.reserve(codes.size());
     srand();
     for (auto &code : codes) {
-        string hash_str = fnv1a_hash(code);
+        std::string hash_str = fnv1a_hash(code);
         items.emplace_back(code, "/tmp/ark_" + hash_str);
     }
     assert(items.size() == 1);
@@ -194,9 +185,9 @@ const std::string gpu_compile(const std::vector<std::string> &codes,
             LOG(INFO, "Compiling: ", code_file_path);
             LOG(DEBUG, compile_cmd);
             // Run the command.
-            array<char, 4096> buffer;
-            stringstream exec_print;
-            unique_ptr<FILE, decltype(&pclose)> pipe(
+            std::array<char, 4096> buffer;
+            std::stringstream exec_print;
+            std::unique_ptr<FILE, decltype(&pclose)> pipe(
                 popen(compile_cmd.c_str(), "r"), pclose);
             if (!pipe) {
                 ERR(SystemError, "popen() failed");
@@ -204,7 +195,7 @@ const std::string gpu_compile(const std::vector<std::string> &codes,
             while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
                 exec_print << buffer.data();
             }
-            string exec_print_str = exec_print.str();
+            std::string exec_print_str = exec_print.str();
             if (exec_print_str.size() > 0) {
                 ERR(ExecutorError, "\n", compile_cmd, "\n", exec_print_str,
                     "\n");
@@ -212,7 +203,7 @@ const std::string gpu_compile(const std::vector<std::string> &codes,
             LOG(INFO, "Compile succeed: ", code_file_path, " (",
                 cpu_timer() - start, " seconds)");
         });
-    string gpubin_file_path = items[0].second + ".cubin";
+    std::string gpubin_file_path = items[0].second + ".cubin";
     return read_file(gpubin_file_path);
 }
 

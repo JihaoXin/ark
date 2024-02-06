@@ -10,7 +10,6 @@
 #include <string>
 #include <tuple>
 
-#include "gpu/gpu_mgr.h"
 #include "sched/sched_op.h"
 
 namespace ark {
@@ -58,29 +57,6 @@ class SchedOpSeq {
     int num_warps = 0;
     int smem_bytes = 0;
     std::array<int, 3> tdims = {{0, 0, 0}};
-};
-
-struct Sched {
-    // Indicates:
-    // if (sm_b <= blockIdx.x < sm_e) and (th_b <= threadIdx.x < th_e);
-    // do run opseq(alpha * (blockIdx.x - sm_b) + beta); fi.
-    // opseq == nullptr implicitly indicates a global sync.
-    Sched(SchedOpSeq *opseq_, int sm_b_, int sm_e_, int th_b_, int th_e_,
-          int alpha_, int beta_)
-        : opseq{opseq_},
-          sm_b{sm_b_},
-          sm_e{sm_e_},
-          th_b{th_b_},
-          th_e{th_e_},
-          alpha{alpha_},
-          beta{beta_} {}
-    SchedOpSeq *opseq;
-    int sm_b;
-    int sm_e;
-    int th_b;
-    int th_e;
-    int alpha;
-    int beta;
 };
 
 }  // namespace ark

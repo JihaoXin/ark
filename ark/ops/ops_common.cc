@@ -46,6 +46,8 @@ OpArchType op_arch_from_string(const std::string &arch) {
         return OP_ARCH_CUDA_90;
     } else if (arch == "rocm_90a") {
         return OP_ARCH_ROCM_90A;
+    } else if (arch == "rocm_942") {
+        return OP_ARCH_ROCM_942;
     }
     return OP_ARCH_UNKNOWN;
 }
@@ -216,57 +218,6 @@ void OpArg::get(Tensor **arg) const {
     *arg = static_cast<Tensor *>(this->val);
 }
 
-bool operator<(const OpArg &oa1, const OpArg &oa2) {
-    if (oa1.type != oa2.type) {
-        return oa1.type < oa2.type;
-    }
-    assert(oa1.val != nullptr);
-    assert(oa2.val != nullptr);
-    switch (oa1.type) {
-        case OP_ARG_INT:
-            return *(int *)oa1.val < *(int *)oa2.val;
-        case OP_ARG_INT64:
-            return *(DimType *)oa1.val < *(DimType *)oa2.val;
-        case OP_ARG_UINT64:
-            return *(uint64_t *)oa1.val < *(uint64_t *)oa2.val;
-        case OP_ARG_BOOL:
-            return *(bool *)oa1.val < *(bool *)oa2.val;
-        case OP_ARG_FLOAT:
-            return *(float *)oa1.val < *(float *)oa2.val;
-        case OP_ARG_DIMS:
-            return *(Dims *)oa1.val < *(Dims *)oa2.val;
-        case OP_ARG_TENSOR:
-            return (uintptr_t)oa1.val < (uintptr_t)oa2.val;
-    }
-    assert(false);
-    return false;
-}
-bool operator==(const OpArg &oa1, const OpArg &oa2) {
-    if (oa1.type != oa2.type) {
-        return false;
-    }
-    assert(oa1.val != nullptr);
-    assert(oa2.val != nullptr);
-    switch (oa1.type) {
-        case OP_ARG_INT:
-            return *(int *)oa1.val == *(int *)oa2.val;
-        case OP_ARG_INT64:
-            return *(DimType *)oa1.val == *(DimType *)oa2.val;
-        case OP_ARG_UINT64:
-            return *(uint64_t *)oa1.val == *(uint64_t *)oa2.val;
-        case OP_ARG_BOOL:
-            return *(bool *)oa1.val == *(bool *)oa2.val;
-        case OP_ARG_FLOAT:
-            return *(float *)oa1.val == *(float *)oa2.val;
-        case OP_ARG_DIMS:
-            return *(Dims *)oa1.val == *(Dims *)oa2.val;
-        case OP_ARG_TENSOR:
-            return oa1.val == oa2.val;
-    }
-    assert(false);
-    return false;
-}
-
 OpArgs::OpArgs(const std::vector<OpArg> &args) : args{args} {}
 
 OpArgs &OpArgs::operator=(const OpArgs &opargs) {
@@ -357,30 +308,6 @@ void OpArgs::get(Tensor **arg, size_t idx) const {
 
 const std::vector<OpArg> &OpArgs::get_args() const { return this->args; }
 
-bool operator<(const OpArgs &opargs1, const OpArgs &opargs2) {
-    for (size_t i = 0; i < opargs1.args.size(); ++i) {
-        if (opargs1.args[i] == opargs2.args[i]) {
-            continue;
-        }
-        return opargs1.args[i] < opargs2.args[i];
-    }
-    return false;
-}
-
-bool operator==(const OpArgs &opargs1, const OpArgs &opargs2) {
-    for (size_t i = 0; i < opargs1.args.size(); ++i) {
-        if (opargs1.args[i] == opargs2.args[i]) {
-            continue;
-        }
-        return false;
-    }
-    return true;
-}
-
-bool operator!=(const OpArgs &opargs1, const OpArgs &opargs2) {
-    return !(opargs1 == opargs2);
-}
-
 Op::Op(const OpType &type_, const std::string &prec_type_,
        const vector<Tensor *> &inputs_, const vector<Tensor *> &output_refs_,
        const OpArgs &args_, const string &name_, const OpConfigMap *cfg_map_,
@@ -442,25 +369,10 @@ std::string Op::function_name(const OpConfig &cfg) const {
             return static_cast<const SendOp *>(this)->function_name(cfg);
         case OP_SEND_DONE:
             return static_cast<const SendDoneOp *>(this)->function_name(cfg);
-        case OP_SEND_MM:
-            return static_cast<const SendMMOp *>(this)->function_name(cfg);
         case OP_RECV:
             return static_cast<const RecvOp *>(this)->function_name(cfg);
-        case OP_RECV_MM:
-            return static_cast<const RecvMMOp *>(this)->function_name(cfg);
-        case OP_SEND_MSLL:
-            return static_cast<const MsllSendOp *>(this)->function_name(cfg);
-        case OP_SEND_DONE_MSLL:
-            return static_cast<const MsllSendDoneOp *>(this)->function_name(
-                cfg);
-        case OP_RECV_MSLL:
-            return static_cast<const MsllRecvOp *>(this)->function_name(cfg);
         case OP_LAYERNORM:
             return static_cast<const LayernormOp *>(this)->function_name(cfg);
-        case OP_RMSNORM:
-            return static_cast<const RMSnormOp *>(this)->function_name(cfg);
-        case OP_SOFTMAX:
-            return static_cast<const SoftmaxOp *>(this)->function_name(cfg);
         case OP_RELU:
             return static_cast<const ReluOp *>(this)->function_name(cfg);
         case OP_COPY:
@@ -473,30 +385,30 @@ std::string Op::function_name(const OpConfig &cfg) const {
             return static_cast<const ExpOp *>(this)->function_name(cfg);
         case OP_SQRT:
             return static_cast<const SqrtOp *>(this)->function_name(cfg);
+        case OP_RSQRT:
+            return static_cast<const RsqrtOp *>(this)->function_name(cfg);
         case OP_ROPE:
             return static_cast<const RopeOp *>(this)->function_name(cfg);
         case OP_EMBEDDING:
             return static_cast<const EmbeddingOp *>(this)->function_name(cfg);
         case OP_CAST:
             return static_cast<const CastOp *>(this)->function_name(cfg);
-        case OP_DEVICE_SYNC_MSLL:
-            return static_cast<const MsllDeviceSyncOp *>(this)->function_name(
+        case OP_DEVICE_SYNC:
+            return static_cast<const DeviceSyncOp *>(this)->function_name(cfg);
+        case OP_READ_AND_REDUCE:
+            return static_cast<const ReadAndReduceOp *>(this)->function_name(
                 cfg);
-        case OP_READ_AND_REDUCE_MSLL:
-            return static_cast<const MsllReadAndReduceOp *>(this)
-                ->function_name(cfg);
-        case OP_GATHER_FROM_PEERS_MSLL:
-            return static_cast<const MsllGatherFromPeersOp *>(this)
-                ->function_name(cfg);
-        case OP_PUT_PACKET_MSLL:
-            return static_cast<const MsllPutPacketOp *>(this)->function_name(
+        case OP_GATHER_FROM_PEERS:
+            return static_cast<const GatherFromPeersOp *>(this)->function_name(
                 cfg);
-        case OP_REDUCE_AND_WRITE_PACKET_MSLL:
-            return static_cast<const MsllReduceAndWritePacketOp *>(this)
+        case OP_PUT_PACKET:
+            return static_cast<const PutPacketOp *>(this)->function_name(cfg);
+        case OP_REDUCE_AND_WRITE_PACKET:
+            return static_cast<const ReduceAndWritePacketOp *>(this)
                 ->function_name(cfg);
-        case OP_GET_FROM_PACKET_MSLL:
-            return static_cast<const MsllGetFromPacketOp *>(this)
-                ->function_name(cfg);
+        case OP_GET_FROM_PACKET:
+            return static_cast<const GetFromPacketOp *>(this)->function_name(
+                cfg);
         default:
             ERR(ModelError, "invalid op type ", this->type);
             return "";
@@ -516,36 +428,23 @@ OpArgs Op::function_call_args(const OpConfig &cfg) const {
                 cfg);
         case OP_RECV:
             return static_cast<const RecvOp *>(this)->function_call_args(cfg);
-        case OP_SEND_MM:
-            return static_cast<const SendMMOp *>(this)->function_call_args(cfg);
-        case OP_RECV_MM:
-            return static_cast<const RecvMMOp *>(this)->function_call_args(cfg);
-        case OP_SEND_MSLL:
-            return static_cast<const MsllSendOp *>(this)->function_call_args(
+        case OP_DEVICE_SYNC:
+            return static_cast<const DeviceSyncOp *>(this)->function_call_args(
                 cfg);
-        case OP_SEND_DONE_MSLL:
-            return static_cast<const MsllSendDoneOp *>(this)
+        case OP_READ_AND_REDUCE:
+            return static_cast<const ReadAndReduceOp *>(this)
                 ->function_call_args(cfg);
-        case OP_RECV_MSLL:
-            return static_cast<const MsllRecvOp *>(this)->function_call_args(
+        case OP_GATHER_FROM_PEERS:
+            return static_cast<const GatherFromPeersOp *>(this)
+                ->function_call_args(cfg);
+        case OP_PUT_PACKET:
+            return static_cast<const PutPacketOp *>(this)->function_call_args(
                 cfg);
-        case OP_DEVICE_SYNC_MSLL:
-            return static_cast<const MsllDeviceSyncOp *>(this)
+        case OP_REDUCE_AND_WRITE_PACKET:
+            return static_cast<const ReduceAndWritePacketOp *>(this)
                 ->function_call_args(cfg);
-        case OP_READ_AND_REDUCE_MSLL:
-            return static_cast<const MsllReadAndReduceOp *>(this)
-                ->function_call_args(cfg);
-        case OP_GATHER_FROM_PEERS_MSLL:
-            return static_cast<const MsllGatherFromPeersOp *>(this)
-                ->function_call_args(cfg);
-        case OP_PUT_PACKET_MSLL:
-            return static_cast<const MsllPutPacketOp *>(this)
-                ->function_call_args(cfg);
-        case OP_REDUCE_AND_WRITE_PACKET_MSLL:
-            return static_cast<const MsllReduceAndWritePacketOp *>(this)
-                ->function_call_args(cfg);
-        case OP_GET_FROM_PACKET_MSLL:
-            return static_cast<const MsllGetFromPacketOp *>(this)
+        case OP_GET_FROM_PACKET:
+            return static_cast<const GetFromPacketOp *>(this)
                 ->function_call_args(cfg);
         default:
             OpArgs opargs;
@@ -605,38 +504,8 @@ std::string Op::function_name(const std::string &kernel_name,
 bool Op::is_virtual() const { return this->cfg_map == nullptr; }
 
 bool Op::is_comm() const {
-    // NOTE: we treat OP_SEND_MM and OP_RECV_MM as computation as
-    // they run over GPU threads.
     return this->type == OP_SEND || this->type == OP_SEND_DONE ||
-           this->type == OP_RECV || this->type == OP_SEND_MSLL ||
-           this->type == OP_SEND_DONE_MSLL || this->type == OP_RECV_MSLL ||
-           this->type == OP_DEVICE_SYNC_MSLL;
-}
-
-bool operator<(const Op &op1, const Op &op2) {
-    if (op1.type < op2.type) {
-        return true;
-    }
-    if (op1.prec_type < op2.prec_type) {
-        return true;
-    }
-    if (op1.args < op2.args) {
-        return true;
-    }
-    return false;
-}
-
-bool operator==(const Op &op1, const Op &op2) {
-    if (op1.type != op2.type) {
-        return false;
-    }
-    if (op1.prec_type != op2.prec_type) {
-        return false;
-    }
-    if (op1.args != op2.args) {
-        return false;
-    }
-    return true;
+           this->type == OP_RECV || this->type == OP_DEVICE_SYNC;
 }
 
 }  // namespace ark

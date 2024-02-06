@@ -10,8 +10,8 @@
 #include <vector>
 
 #define ARK_MAJOR 0
-#define ARK_MINOR 4
-#define ARK_PATCH 1
+#define ARK_MINOR 5
+#define ARK_PATCH 0
 #define ARK_VERSION (ARK_MAJOR * 10000 + ARK_MINOR * 100 + ARK_PATCH)
 
 namespace ark {
@@ -124,6 +124,7 @@ REGISTER_TENSOR_TYPE(INT8, 1, "int8_t")
 REGISTER_TENSOR_TYPE(UINT8, 1, "uint8_t")
 REGISTER_TENSOR_TYPE(BYTE, 1, "unsigned char")
 
+class GpuBuffer;
 // TensorBuf refers to a data array that can be shared by multiple tensors.
 class TensorBuf {
    public:
@@ -137,7 +138,7 @@ class TensorBuf {
     bool immutable = true;
 
    protected:
-    void *buf = nullptr;
+    std::shared_ptr<GpuBuffer> buf = nullptr;
 
     friend class Tensor;
     friend class BaseScheduler;
@@ -377,15 +378,6 @@ class Model {
     // normalized tensor as `output`.
     Tensor *layernorm(Tensor *input, Tensor *output = nullptr,
                       const std::string &name = "layernorm");
-    // Applies RMS (Root Mean Square Layer Normalization) normalization to the
-    // `input` tensor and returns the normalized tensor as `output`.
-    Tensor *rmsnorm(Tensor *input, Tensor *output = nullptr,
-                    const std::string &name = "rmsnorm");
-    // Applies softmax activation to the `input` tensor, with the softmax
-    // operator
-    // being performed on the last dimension of the input tensor.
-    Tensor *softmax(Tensor *input, Tensor *output = nullptr,
-                    const std::string &name = "softmax");
     // Transposes the `input` tensor according to the given `perm` permutation.
     // For example, transpose(input, {0, 1 ,3, 2}) will swap the last two
     // dimensions of the input tensor. Currently, only 4D tensors are supported.
@@ -416,12 +408,19 @@ class Model {
     // Multiplies the `input` tensor by a scalar `val`, element-wise.
     Tensor *scale(Tensor *input, float val, Tensor *output = nullptr,
                   const std::string &name = "scale");
+    //
+    template <typename MathOpType>
+    Tensor *math(Tensor *input, Tensor *output = nullptr,
+                 const std::string &name = "math");
     // Calculates the exponential of the `input` tensor, element-wise.
     Tensor *exp(Tensor *input, Tensor *output = nullptr,
                 const std::string &name = "exp");
     // Calculates the square root of the `input` tensor, element-wise.
     Tensor *sqrt(Tensor *input, Tensor *output = nullptr,
                  const std::string &name = "sqrt");
+    // Calculates the reverse square root of the `input` tensor, element-wise.
+    Tensor *rsqrt(Tensor *input, Tensor *output = nullptr,
+                  const std::string &name = "rsqrt");
     // ReLU activation
     Tensor *relu(Tensor *input, Tensor *output = nullptr,
                  const std::string &name = "relu");
@@ -439,6 +438,10 @@ class Model {
     // Performs rotary position embedding (RoPE) on the `input` tensor
     Tensor *rope(Tensor *input, Tensor *other, Tensor *output = nullptr,
                  const std::string &name = "rope");
+    // Template for broadcated arithmetic operators.
+    template <typename ArithmeticOpType>
+    Tensor *arithmetic(Tensor *input, Tensor *other, Tensor *output = nullptr,
+                       const std::string &name = "arithmeitc");
     // Performs an element-wise addition operator between the `input` tensor
     // and the `other` tensor
     Tensor *add(Tensor *input, Tensor *other, Tensor *output = nullptr,
@@ -466,43 +469,21 @@ class Model {
     /// @param bytes
     /// @param name
     /// @return
-    Tensor *send(Tensor *input, int id, int dst_rank, std::size_t bytes = 0,
+    Tensor *send(Tensor *input, int sid, int dst_rank, std::size_t bytes = 0,
                  const std::string &name = "send");
     // Blocks the execution until the corresponding 'send' operator with the
     // specified `id` is completed.
-    Tensor *send_done(Tensor *input, int id, int dst_rank,
+    Tensor *send_done(Tensor *input, int sid, int dst_rank,
                       const std::string &name = "send_done");
     // Receives a tensor from a source rank (@p src_rank), identified by the
     // `id` parameter. Blocks the execution until the corresponding 'recv'
     // operator is completed.
-    Tensor *recv(int id, int src_rank, std::size_t bytes = 0,
+    Tensor *recv(int sid, int src_rank, std::size_t bytes = 0,
                  Tensor *output = nullptr, const std::string &name = "recv");
-    // Similar to the 'send_done' function, but implemented using in-stream
-    // RDMA copy and Low Latency (LL) protocol.
-    Tensor *send_mm(Tensor *input, int id, int gpu_dst, std::size_t bytes = 0,
-                    Tensor *output = nullptr,
-                    const std::string &name = "send_mm");
-    // Similar to the 'recv' function, but implemented using in-stream RDMA
-    // copy and Low Latency (LL) protocol.
-    Tensor *recv_mm(Tensor *input, int id, int gpu_src, std::size_t bytes = 0,
-                    Tensor *output = nullptr,
-                    const std::string &name = "recv_mm");
     //
-    Tensor *send_msll(Tensor *input, int sid, int dst_rank,
-                      std::size_t bytes = 0,
-                      const std::string &name = "send_msll");
-    //
-    Tensor *send_done_msll(Tensor *input, int dst_rank,
-                           const std::string &name = "send_done_msll");
-    //
-    Tensor *recv_msll(int sid, int src_rank, std::size_t bytes = 0,
-                      Tensor *output = nullptr,
-                      const std::string &name = "recv_msll");
-    //
-    Tensor *put_packet_msll(Tensor *input, Tensor *local_tmp_buf,
-                            Tensor *recv_buf, int id, int rank, int dst_rank,
-                            size_t dst_offset, int flag,
-                            const std::string &name = "put_packet_msll");
+    Tensor *put_packet(Tensor *input, Tensor *local_tmp_buf, Tensor *recv_buf,
+                       int id, int rank, int dst_rank, size_t dst_offset,
+                       int flag, const std::string &name = "put_packet");
     // Performs an all-reduce operator across all ranks, aggregating the input
     // tensors. Takes the `input` tensor, the current GPU's rank, and the
     // total number of ranks `rank_num`.
@@ -524,43 +505,42 @@ class Model {
                  Tensor *output = nullptr, const std::string &name = "cast");
 
     // sync across multi devices
-    Tensor *device_sync_msll(Tensor *input, int npeers,
-                             const std::string &name = "device_sync_msll");
+    Tensor *device_sync(Tensor *input, int npeers,
+                        const std::string &name = "device_sync");
 
     // local reduce scatter
-    Tensor *local_reduce_scatter_msll(
+    Tensor *local_reduce_scatter(
         Tensor *input, int gpu_id, int ngpus_per_node,
-        const std::string &name = "local_reduce_scatter_msll");
+        const std::string &name = "local_reduce_scatter");
 
     // local all gather
-    Tensor *local_all_gather_msll(
-        Tensor *input, int gpu_id, int ngpus_per_node, int axis = 0,
-        const std::string &name = "local_all_gather_msll");
+    Tensor *local_all_gather(Tensor *input, int gpu_id, int ngpus_per_node,
+                             int axis = 0,
+                             const std::string &name = "local_all_gather");
     // read data from remote and reduce to current buffer
-    Tensor *read_and_reduce_msll(
-        Tensor *input, int sid, int npeers, size_t offset, size_t bytes,
-        const std::string &name = "read_and_reduce_msll");
+    Tensor *read_and_reduce(Tensor *input, int sid, int npeers, size_t offset,
+                            size_t bytes,
+                            const std::string &name = "read_and_reduce");
     // gather from peers
-    Tensor *gather_from_peers_msll(
-        Tensor *input, Tensor *tile, int sid, int npeers, size_t stride,
-        const std::string &name = "gather_from_peers_msll");
+    Tensor *gather_from_peers(Tensor *input, Tensor *tile, int sid, int npeers,
+                              size_t chunkBytes,
+                              const std::string &name = "gather_from_peers");
 
-    Tensor *local_all_reduce_msll(
+    Tensor *local_all_reduce(Tensor *input, int gpu_id, int gpu_num,
+                             const std::string &name = "local_all_reduce");
+    Tensor *local_all_reduce_packet(
         Tensor *input, int gpu_id, int gpu_num,
-        const std::string &name = "local_all_reduce_msll");
-    Tensor *local_all_reduce_packet_msll(
-        Tensor *input, int gpu_id, int gpu_num,
-        const std::string &name = "local_all_reduce_packet_msll");
+        const std::string &name = "local_all_reduce_packet");
 
-    Tensor *reduce_and_write_packet_msll(
+    Tensor *reduce_and_write_packet(
         Tensor *input, Tensor *scratch, Tensor *output,
         const std::vector<Tensor *> &remote_peer_bufs, int id, int rank,
         int npeers, size_t elems_per_rank, size_t scratch_offset,
         size_t remote_dst_offset, int flag,
-        const std::string &name = "reduce_and_write_packet_msll");
-    Tensor *get_packet_msll(Tensor *input, Tensor *output, size_t src_offset,
-                            size_t dst_offset, size_t npackets, int flag,
-                            const std::string &name = "get_packet_msll");
+        const std::string &name = "reduce_and_write_packet");
+    Tensor *get_packet(Tensor *input, Tensor *output, size_t src_offset,
+                       size_t dst_offset, size_t npackets, int flag,
+                       const std::string &name = "get_packet");
     /// Verify if this model is valid.
     /// @return true if the model is valid, false otherwise.
     bool verify() const;

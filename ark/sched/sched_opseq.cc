@@ -5,7 +5,7 @@
 
 #include "env.h"
 #include "logging.h"
-#include "math.h"
+#include "math_utils.h"
 
 using namespace std;
 
@@ -28,9 +28,6 @@ bool SchedOpSeq::is_send() const {
         if (ot == OP_SEND) {
             continue;
         }
-        if (ot == OP_SEND_MSLL) {
-            continue;
-        }
         return false;
     }
     return true;
@@ -43,9 +40,6 @@ bool SchedOpSeq::is_send_done() const {
         }
         const OpType &ot = sop.get_op()->type;
         if (ot == OP_SEND_DONE) {
-            continue;
-        }
-        if (ot == OP_SEND_DONE_MSLL) {
             continue;
         }
         return false;
@@ -62,9 +56,6 @@ bool SchedOpSeq::is_recv() const {
         if (ot == OP_RECV) {
             continue;
         }
-        if (ot == OP_RECV_MSLL) {
-            continue;
-        }
         return false;
     }
     return true;
@@ -76,7 +67,7 @@ bool SchedOpSeq::is_sync() const {
             continue;
         }
         const OpType &ot = sop.get_op()->type;
-        if (ot == OP_DEVICE_SYNC_MSLL) {
+        if (ot == OP_DEVICE_SYNC) {
             continue;
         }
         return false;
@@ -137,47 +128,6 @@ bool SchedOpSeq::append(const Op *op, const OpConfig *cfg) {
         this->smem_bytes = max(this->smem_bytes, sb);
     }
     this->seq.emplace_back(op, cfg, "");
-    return true;
-}
-bool operator<(const SchedOpSeq &ops1, const SchedOpSeq &ops2) {
-    auto &seq1 = ops1.get_sched_ops();
-    auto &seq2 = ops2.get_sched_ops();
-    for (size_t i = 0; i < seq1.size(); ++i) {
-        if (seq2.size() <= i) {
-            return true;
-        } else if (seq1[i].get_cfg() != seq2[i].get_cfg()) {
-            return seq1[i].get_cfg() < seq2[i].get_cfg();
-        } else if (seq1[i].get_op() == nullptr) {
-            return false;
-        } else if (seq2[i].get_op() == nullptr) {
-            return true;
-        } else if (*seq1[i].get_op() == *seq2[i].get_op()) {
-            continue;
-        }
-        return *seq1[i].get_op() < *seq2[i].get_op();
-    }
-    return false;
-}
-bool operator==(const SchedOpSeq &ops1, const SchedOpSeq &ops2) {
-    auto &seq1 = ops1.get_sched_ops();
-    auto &seq2 = ops2.get_sched_ops();
-    if (seq1.size() != seq2.size()) {
-        return false;
-    }
-    for (size_t i = 0; i < seq1.size(); ++i) {
-        if (seq1[i].get_cfg() != seq2[i].get_cfg()) {
-            return false;
-        } else if ((seq1[i].get_op() == nullptr) &&
-                   (seq2[i].get_op() == nullptr)) {
-            continue;
-        } else if ((seq1[i].get_op() == nullptr) ||
-                   (seq2[i].get_op() == nullptr)) {
-            return false;
-        } else if (*seq1[i].get_op() == *seq2[i].get_op()) {
-            continue;
-        }
-        return false;
-    }
     return true;
 }
 

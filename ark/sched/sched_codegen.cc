@@ -12,7 +12,7 @@
 
 #include "env.h"
 #include "logging.h"
-#include "math.h"
+#include "math_utils.h"
 
 #define OP_PREFIX "op"
 #define UNIT_OP_PREFIX "uop"
@@ -20,7 +20,8 @@
 
 namespace ark {
 
-CodeGenerator::CodeGenerator(const GpuInfo &gpu_info_, int num_warps_per_sm_)
+CodeGenerator::CodeGenerator(const GpuManager::Info &gpu_info_,
+                             int num_warps_per_sm_)
     : gpu_info{gpu_info_},
       sm_num{gpu_info_.num_sm},
       num_warps_per_sm{num_warps_per_sm_},
@@ -71,9 +72,11 @@ std::ostream &CodeGenerator::tensor(std::ostream &os,
                                     const Tensor *tensor) const {
     size_t off = this->get_tensor_offset(tensor);
     os << "(" << tensor->type.type_str() << " *)";
-    std::string buf_name = ARK_BUF_NAME;
+    std::string buf_name;
     if (tensor->imported_rank >= 0) {
-        buf_name += std::to_string(tensor->imported_rank);
+        buf_name = ARK_BUF_NAME + std::to_string(tensor->imported_rank);
+    } else {
+        buf_name = "_buf";
     }
     os << "&" << buf_name << "[" << off << "]";
     return os;
@@ -242,7 +245,7 @@ std::ostream &CodeGenerator::branch(std::ostream &os, const Branch &br,
             // uop = uop_id_diff * (warp_idx / num_warps_per_uop +
             //                      num_uops * sm_idx) + uop_id_begin;
             std::stringstream ss;
-            ss << OP_PREFIX << opseq_id << '(';
+            ss << OP_PREFIX << opseq_id << "(_buf, ";
             if (uop_id_diff != 0) {
                 auto indexing = get_indexing(num_warps_per_uop);
                 if (!indexing.empty()) {
@@ -368,7 +371,7 @@ std::ostream &CodeGenerator::opseq(std::ostream &os, const std::string &name,
             os << "// tile dims: (" << opseq.get_tdims()[0] << ", "
                << opseq.get_tdims()[1] << ", " << opseq.get_tdims()[2] << ")\n"
                << "__noinline__ __device__ void " << name
-               << "(int _uop_idx, int _smem_per_warp) {\n";
+               << "(char *_buf, int _uop_idx, int _smem_per_warp) {\n";
         }
         --idx;
         os << "  ";
@@ -393,32 +396,13 @@ std::ostream &CodeGenerator::opseq(std::ostream &os, const std::string &name,
     return os;
 }
 
-std::ostream &CodeGenerator::sched(std::ostream &os, Sched &sched) const {
-    os << "if(";
-    if (sched.sm_b > 0) os << "blockIdx.x >= " << sched.sm_b << "&& ";
-    os << "blockIdx.x < " << sched.sm_e << "){\n";
-    os << "  if(";
-    if (sched.th_b > 0) os << "threadIdx.x >= " << sched.th_b << " && ";
-    os << "threadIdx.x<" << sched.th_e << "){\n";
-    SchedOpSeq *opseq = sched.opseq;
-    os << "    opseq_" << opseq->get_id() << "_tile_task"
-       << "(" << sched.alpha << "*(blockIdx.x - " << sched.sm_b << ") + "
-       << "threadIdx.x / " << opseq->get_num_warps() * 32 << " + " << sched.beta
-       << ");\n";
-    os << "    "
-       << "ark::sync_warps<" << opseq->get_num_warps() << ">();\n";
-    os << "  }\n"
-       << " }\n";
-    return os;
-}
-
 std::ostream &CodeGenerator::def_proxy_channels(std::ostream &os,
                                                 size_t num_channels) const {
     if (num_channels == 0) {
         return os;
     }
-    os << "#include <msll/proxy_channel_device.hpp>\n"
-          "__constant__ msll::SimpleProxyChannelDeviceHandle "
+    os << "#include <mscclpp/proxy_channel_device.hpp>\n"
+          "__constant__ mscclpp::SimpleProxyChannelDeviceHandle "
           "_ARK_PROXY_CHANS["
        << num_channels << "];\n";
     return os;
@@ -429,8 +413,8 @@ std::ostream &CodeGenerator::def_sm_channels(std::ostream &os,
     if (num_channels == 0) {
         return os;
     }
-    os << "#include <msll/sm_channel_device.hpp>\n"
-          "__constant__ msll::SmChannelDeviceHandle "
+    os << "#include <mscclpp/sm_channel_device.hpp>\n"
+          "__constant__ mscclpp::SmChannelDeviceHandle "
           "_ARK_SM_CHANS["
        << num_channels << "];\n";
     return os;
