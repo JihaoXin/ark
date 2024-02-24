@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "ark.h"
-#include "ark_utils.h"
+// #include "ark_utils.h"
 
 using namespace std;
 using namespace ark;

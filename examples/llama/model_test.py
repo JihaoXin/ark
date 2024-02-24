@@ -514,8 +514,8 @@ def test(args, batch_size, seq_len, dtype, rank, world_size):
     # test_row_parallel_linear(args, batch_size, seq_len, dtype, rank, world_size)
     # test_column_parallel_linear(args, batch_size, seq_len, dtype, rank, world_size)
     # test_attention(args, batch_size, seq_len, dtype, rank, world_size)
-    # test_transformer_block(args, batch_size, seq_len, dtype, rank, world_size)
-    test_transformer(args, batch_size, seq_len, dtype, rank, world_size)
+    test_transformer_block(args, batch_size, seq_len, dtype, rank, world_size)
+    # test_transformer(args, batch_size, seq_len, dtype, rank, world_size)
 
 
 def worker(
